@@ -23,7 +23,6 @@ export async function POST(req: Request) {
 
         bankAccount: {
           create: {
-            paymentMethod: body.paymentMethod,
             bankName: body.bankName,
             accountName: body.accountName,
             accountNumber: body.accountNumber,
