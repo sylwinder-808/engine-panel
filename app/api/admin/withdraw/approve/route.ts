@@ -17,6 +17,10 @@ export async function POST(req: Request) {
       where: { userId: wd.userId }
     });
 
+    if (!wallet) {
+      throw new Error("Wallet not found");
+    }
+
     // dari HOLD → FINAL
     const newHold = wallet.holdBalance - wd.amount;
 
