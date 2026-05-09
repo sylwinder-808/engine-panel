@@ -3,15 +3,11 @@ import { prisma } from "@/lib/prisma";
 export async function POST(req: Request) {
   let body;
 
-  // 🛡️ handle empty / invalid JSON
   try {
     body = await req.json();
-  } catch (err) {
+  } catch {
     return Response.json(
-      {
-        success: false,
-        error: "Invalid or empty request body",
-      },
+      { success: false, error: "Invalid or empty request body" },
       { status: 400 }
     );
   }
@@ -20,10 +16,7 @@ export async function POST(req: Request) {
 
   if (!depositId) {
     return Response.json(
-      {
-        success: false,
-        error: "depositId is required",
-      },
+      { success: false, error: "depositId is required" },
       { status: 400 }
     );
   }
@@ -34,17 +27,40 @@ export async function POST(req: Request) {
 
   if (!deposit || deposit.status !== "pending") {
     return Response.json(
-      {
-        success: false,
-        error: "Invalid deposit",
-      },
+      { success: false, error: "Invalid deposit" },
       { status: 400 }
     );
   }
 
-  await prisma.deposit.update({
-    where: { id: deposit.id },
-    data: { status: "rejected" },
+  await prisma.$transaction(async (tx) => {
+    // 1. update status deposit
+    await tx.deposit.update({
+      where: { id: deposit.id },
+      data: { status: "rejected" },
+    });
+
+    // 2. transaction log (audit trail)
+    await tx.transaction.create({
+      data: {
+        userId: deposit.userId,
+        type: "deposit_rejected",
+        amount: deposit.amount,
+        status: "failed",
+        description: "Deposit rejected by admin",
+      },
+    });
+
+    // 3. admin log (kalau kamu pakai AdminLogService bisa juga)
+    await tx.adminLog.create({
+      data: {
+        adminId: 1, // nanti ganti dari JWT admin
+        action: "deposit_reject",
+        targetId: deposit.id,
+        meta: {
+          amount: deposit.amount,
+        },
+      },
+    });
   });
 
   return Response.json({

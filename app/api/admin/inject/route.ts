@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { verifyAdmin } from "@/lib/admin";
+import { LedgerService } from "@/lib/services/ledger.service";
 
 export async function POST(req: Request) {
   try {
@@ -14,50 +15,68 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
+    if (!body.username || !body.amount) {
+      return Response.json({
+        success: false,
+        error: "username and amount required",
+      }, { status: 400 });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
-      // cari user
+      // 1. find user
       const user = await tx.user.findUnique({
-        where: {
-          username: body.username,
-        },
-        include: {
-          wallet: true,
-        },
+        where: { username: body.username },
       });
 
-      if (!user || !user.wallet) {
+      if (!user) {
         throw new Error("User not found");
       }
 
-      const before = user.wallet.balance;
-      const after = before + body.amount;
+      // 2. hitung balance dari ledger
+      const beforeBalance = await LedgerService.getBalance(user.id);
+      const afterBalance = beforeBalance + body.amount;
 
-      // update wallet
-      await tx.wallet.update({
-        where: {
-          userId: user.id,
-        },
+      // 3. ledger entry (CREDIT)
+      await tx.ledger.create({
         data: {
-          balance: after,
+          userId: user.id,
+          type: "admin_inject",
+          amount: body.amount,
+          direction: "credit",
+          before: beforeBalance,
+          after: afterBalance,
         },
       });
 
-      // create transaction log
+      // 4. transaction log (history UI)
       await tx.transaction.create({
         data: {
           userId: user.id,
-          type: "deposit",
+          type: "admin_inject",
           amount: body.amount,
-          beforeBalance: before,
-          afterBalance: after,
+          beforeBalance,
+          afterBalance,
+          status: "success",
           description: "Admin inject coin",
+        },
+      });
+
+      // 5. admin log (audit trail)
+      await tx.adminLog.create({
+        data: {
+          adminId: admin.id,
+          action: "manual_inject",
+          targetId: user.id,
+          meta: {
+            amount: body.amount,
+          },
         },
       });
 
       return {
         username: user.username,
-        before,
-        after,
+        beforeBalance,
+        afterBalance,
       };
     });
 

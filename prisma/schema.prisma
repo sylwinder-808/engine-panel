@@ -8,21 +8,23 @@ datasource db {
 }
 
 model User {
-  id            Int      @id @default(autoincrement())
-  username      String   @unique
-  email         String   @unique
-  phone         String
-  password      String
-  role          String   @default("player")
-  isBlocked     Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  email     String   @unique
+  phone     String
+  password  String
+  role      String   @default("player")
+  isBlocked Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   wallet       Wallet?
   bankAccount  BankAccount[]
   transactions Transaction[]
   withdrawals  Withdrawal[]
 
-  deposits Deposit[] // 🔥 ADD INI
+  deposits  Deposit[]
+  adminLogs AdminLog[]
+  ledgers       Ledger[]
 }
 
 model Wallet {
@@ -42,7 +44,7 @@ model BankAccount {
   paymentMethod String?
   bankName      String
   accountName   String
-  accountNumber String
+  accountNumber String @unique
 
   user User @relation(fields: [userId], references: [id])
 
@@ -69,10 +71,19 @@ model Transaction {
 }
 
 model Withdrawal {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  amount    Float
-  status    String   @default("pending") // pending, approved, rejected, paid
+  id     Int   @id @default(autoincrement())
+  userId Int
+  amount Float
+
+  status String @default("pending")
+
+  beforeBalance Float
+  afterBalance  Float
+
+  bankName      String
+  accountName   String
+  accountNumber String
+
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
@@ -92,4 +103,36 @@ model Deposit {
 
   @@index([userId])
   @@index([status])
+}
+
+model AdminLog {
+  id        Int      @id @default(autoincrement())
+  adminId   Int
+  action    String
+  targetId  Int?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id])
+}
+
+model Ledger {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String   // deposit, withdraw, inject, refund
+  amount    Float
+  direction String   // credit | debit
+  before    Float
+  after     Float
+  refId     Int?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model WebSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { LedgerService } from "@/lib/services/ledger.service";
 
 export async function POST(req: Request) {
   let body;
@@ -33,6 +34,9 @@ export async function POST(req: Request) {
     );
   }
 
+  const beforeBalance = await LedgerService.getBalance(deposit.userId);
+  const afterBalance = beforeBalance + deposit.amount;
+
   await prisma.$transaction(async (tx) => {
     // 1. update deposit status
     await tx.deposit.update({
@@ -40,24 +44,28 @@ export async function POST(req: Request) {
       data: { status: "approved" },
     });
 
-    // 2. update wallet balance
-    await tx.wallet.update({
-      where: { userId: deposit.userId },
+    // 2. create ledger entry (SOURCE OF TRUTH)
+    await tx.ledger.create({
       data: {
-        balance: {
-          increment: deposit.amount,
-        },
+        userId: deposit.userId,
+        type: "deposit",
+        amount: deposit.amount,
+        direction: "credit",
+        before: beforeBalance,
+        after: afterBalance,
+        refId: deposit.id,
       },
     });
 
-    // 3. create transaction log
+    // 3. transaction log (history UI)
     await tx.transaction.create({
       data: {
         userId: deposit.userId,
         type: "deposit",
         amount: deposit.amount,
-        beforeBalance: 0, // bisa kamu improve nanti
-        afterBalance: 0,  // bisa dihitung real
+        beforeBalance,
+        afterBalance,
+        status: "success",
         description: "Deposit approved",
       },
     });
